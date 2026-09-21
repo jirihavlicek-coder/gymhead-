@@ -1,0 +1,396 @@
+<!DOCTYPE html>
+<html lang="cs">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>PPL Silový Deník & Auto-Rotace</title>
+    <style>
+        :root {
+            --bg-main: #121214;
+            --bg-card: #1e1e24;
+            --bg-input: #2a2a32;
+            --accent-push: #ff4757;
+            --accent-pull: #1e90ff;
+            --accent-legs: #2ed573;
+            --accent-gold: #ffa502;
+            --text-main: #ffffff;
+            --text-muted: #a4b0be;
+            --border-color: #33333f;
+        }
+
+        * { box-sizing: border-box; margin: 0; padding: 0; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; }
+        body { background-color: var(--bg-main); color: var(--text-main); padding-bottom: 80px; }
+
+        header { background: #1a1a20; padding: 15px 20px; border-bottom: 1px solid var(--border-color); text-align: center; sticky: top; }
+        header h1 { font-size: 1.2rem; color: var(--text-main); }
+        header p { font-size: 0.85rem; color: var(--text-muted); margin-top: 3px; }
+
+        .container { max-width: 600px; margin: 0 auto; padding: 15px; }
+
+        /* Navigation */
+        nav { position: fixed; bottom: 0; left: 0; right: 0; background: #1a1a20; display: flex; justify-content: space-around; padding: 10px 0; border-top: 1px solid var(--border-color); z-index: 100; }
+        nav button { background: none; border: none; color: var(--text-muted); font-size: 0.75rem; display: flex; flex-direction: column; align-items: center; gap: 4px; cursor: pointer; width: 25%; }
+        nav button.active { color: var(--accent-gold); font-weight: bold; }
+
+        /* Cards & Components */
+        .card { background: var(--bg-card); border-radius: 12px; padding: 16px; margin-bottom: 15px; border: 1px solid var(--border-color); }
+        .badge { display: inline-block; padding: 4px 10px; border-radius: 20px; font-size: 0.75rem; font-weight: bold; text-transform: uppercase; }
+        .badge-push { background: rgba(255, 71, 87, 0.2); color: var(--accent-push); border: 1px solid var(--accent-push); }
+        .badge-pull { background: rgba(30, 144, 255, 0.2); color: var(--accent-pull); border: 1px solid var(--accent-pull); }
+        .badge-legs { background: rgba(46, 213, 115, 0.2); color: var(--accent-legs); border: 1px solid var(--accent-legs); }
+
+        .exercise-item { background: var(--bg-main); border-radius: 8px; padding: 12px; margin-top: 10px; border-left: 4px solid var(--text-muted); }
+        .exercise-item.push { border-left-color: var(--accent-push); }
+        .exercise-item.pull { border-left-color: var(--accent-pull); }
+        .exercise-item.legs { border-left-color: var(--accent-legs); }
+
+        .exercise-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px; }
+        .exercise-title { font-weight: bold; font-size: 0.95rem; }
+        .exercise-meta { font-size: 0.8rem; color: var(--text-muted); }
+        .exercise-note { font-size: 0.75rem; color: var(--accent-gold); margin-bottom: 8px; }
+
+        .input-group { display: flex; gap: 10px; margin-top: 8px; }
+        .input-field { flex: 1; background: var(--bg-input); border: 1px solid var(--border-color); color: var(--text-main); padding: 8px 10px; border-radius: 6px; font-size: 0.85rem; text-align: center; }
+
+        .btn-primary { width: 100%; background: var(--accent-gold); color: #000; border: none; padding: 14px; border-radius: 8px; font-weight: bold; font-size: 1rem; cursor: pointer; margin-top: 15px; }
+        .btn-secondary { background: var(--bg-input); color: var(--text-main); border: 1px solid var(--border-color); padding: 8px 12px; border-radius: 6px; font-size: 0.8rem; cursor: pointer; }
+
+        /* Dashboard & Goals */
+        .goal-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-top: 10px; }
+        .goal-box { background: var(--bg-main); padding: 10px; border-radius: 8px; text-align: center; border: 1px solid var(--border-color); }
+        .goal-box h4 { font-size: 0.75rem; color: var(--text-muted); margin-bottom: 4px; }
+        .goal-box .val { font-size: 1.1rem; font-weight: bold; color: var(--accent-gold); }
+
+        .hidden { display: none; }
+    </style>
+</head>
+<body>
+
+    <header>
+        <h1 id="header-date">Načítám datum...</h1>
+        <p id="header-status">PPL Silová Rotace</p>
+    </header>
+
+    <div class="container">
+
+        <!-- VIEW 1: TODAY'S WORKOUT (AUTODETECTED) -->
+        <div id="view-today">
+            <div class="card">
+                <div style="display: flex; justify-content: space-between; align-items: center;">
+                    <span id="today-badge" class="badge badge-push">NÁVRH TRÉNINKU</span>
+                    <button class="btn-secondary" onclick="cycleOverrideWorkout()">Změnit trénink 🔄</button>
+                </div>
+                <h2 id="today-title" style="margin-top: 10px; font-size: 1.4rem;">Načítám...</h2>
+                <p id="today-subtitle" style="font-size: 0.85rem; color: var(--text-muted); margin-top: 4px;"></p>
+            </div>
+
+            <div class="card">
+                <h3 style="font-size: 1rem; margin-bottom: 5px;">Zápis dnešních výkonů:</h3>
+                <p style="font-size: 0.75rem; color: var(--text-muted); margin-bottom: 15px;">Zapiš váhu a počet opakování z nejtěžší/poslední série.</p>
+                <div id="exercise-list"></div>
+
+                <button class="btn-primary" onclick="saveWorkout()">DOKONČIT A ULOŽIT TRÉNINK 🚀</button>
+            </div>
+        </div>
+
+        <!-- VIEW 2: DASHBOARD & CÍLE -->
+        <div id="view-dashboard" class="hidden">
+            <div class="card">
+                <h3>🎯 Silové Cíle (Trojboj + OHP)</h3>
+                <div class="goal-grid">
+                    <div class="goal-box">
+                        <h4>BENCH PRESS</h4>
+                        <div class="val">110 kg × 5</div>
+                        <span style="font-size: 0.65rem; color: var(--text-muted);">Cíl: 125 kg 1RM</span>
+                    </div>
+                    <div class="goal-box">
+                        <h4>MILITARY PRESS</h4>
+                        <div class="val">70 kg × 5</div>
+                        <span style="font-size: 0.65rem; color: var(--text-muted);">Cíl: 80 kg 1RM</span>
+                    </div>
+                    <div class="goal-box">
+                        <h4>ZADNÍ DŘEP</h4>
+                        <div class="val">150 kg × 5</div>
+                        <span style="font-size: 0.65rem; color: var(--text-muted);">Cíl: 170 kg 1RM</span>
+                    </div>
+                    <div class="goal-box">
+                        <h4>MRTVÝ TAH</h4>
+                        <div class="val">180 kg × 5</div>
+                        <span style="font-size: 0.65rem; color: var(--text-muted);">Cíl: 200 kg 1RM</span>
+                    </div>
+                </div>
+            </div>
+
+            <div class="card">
+                <h3>🔄 Rotace PPL Systému</h3>
+                <p style="font-size: 0.8rem; color: var(--text-muted); margin: 8px 0;">Pořadí tréninků: Push A ➔ Pull A ➔ Legs A ➔ Push B ➔ Pull B ➔ Legs B</p>
+                <div id="last-workout-info" style="font-size: 0.85rem; font-weight: bold; color: var(--accent-gold);"></div>
+            </div>
+        </div>
+
+        <!-- VIEW 3: HISTORIE LOGŮ -->
+        <div id="view-history" class="hidden">
+            <div class="card">
+                <h3>📜 Historie Odjetých Tréninků</h3>
+                <div id="history-container" style="margin-top: 10px;"></div>
+            </div>
+        </div>
+
+    </div>
+
+    <!-- NAVIGATION -->
+    <nav>
+        <button id="nav-today" class="active" onclick="switchView('today')">
+            <span>🏋️‍♂️</span>
+            <span>Dnešek</span>
+        </button>
+        <button id="nav-dashboard" onclick="switchView('dashboard')">
+            <span>📊</span>
+            <span>Cíle</span>
+        </button>
+        <button id="nav-history" onclick="switchView('history')">
+            <span>📜</span>
+            <span>Historie</span>
+        </button>
+    </nav>
+
+    <script>
+        // Routine Database
+        const ROUTINE = [
+            {
+                id: 'push_a',
+                name: 'Push A',
+                type: 'push',
+                focus: 'Bench Press Focus',
+                badge: 'badge-push',
+                exercises: [
+                    { name: 'Bench Press (Velká osa)', reps: '4 × 3–5', note: 'RPE 8-9, stopka na prsou' },
+                    { name: 'Military Press (Velká osa)', reps: '3 × 4–6', note: 'Pevný střed těla' },
+                    { name: 'Tlaky na šikmé lavici (DB)', reps: '3 × 6–8', note: 'Sklon lavice 30°' },
+                    { name: 'Upažování s jednoručkami', reps: '4 × 10–12', note: 'Pauza v horní fázi' },
+                    { name: 'Pec Deck (Rozpažování)', reps: '3 × 10–12', note: 'Plné protažení prsou' },
+                    { name: 'Stahování kladky (Triceps)', reps: '3 × 8–10', note: 'Lokty u těla, izolace' }
+                ]
+            },
+            {
+                id: 'pull_a',
+                name: 'Pull A',
+                type: 'pull',
+                focus: 'Shyby Focus (Šetrné ke spodním zádům po MT)',
+                badge: 'badge-pull',
+                exercises: [
+                    { name: 'Shyby se zátěží / Kladka', reps: '4 × 4–6', note: 'Plný rozsah, bez švihu' },
+                    { name: 'T-Bar Row s oporou prsou', reps: '4 × 6–8', note: 'Šetří spodek zad' },
+                    { name: 'Přítahy DB na šikmé lavici', reps: '3 × 8–10', note: 'Břichem na lavici' },
+                    { name: 'Face Pulls na kladce', reps: '4 × 10–12', note: 'Důraz na zadní delty' },
+                    { name: 'Scottova lavice (Biceps)', reps: '3 × 6–8', note: 'Kontrolovaná negativka' },
+                    { name: 'Kladivové zdvihy v sedě', reps: '3 × 8–10', note: 'Neutrální úchop' }
+                ]
+            },
+            {
+                id: 'legs_a',
+                name: 'Legs A',
+                type: 'legs',
+                focus: 'Mrtvý Tah Focus',
+                badge: 'badge-legs',
+                exercises: [
+                    { name: 'Mrtvý Tah (Konvenční/Sumo)', reps: '4 × 3–5', note: 'Výbušný start, pevný střed' },
+                    { name: 'Hack Dřep / Leg Press', reps: '4 × 6–8', note: 'Hluboký rozsah pohybu' },
+                    { name: 'Zakopávání na stroji', reps: '3 × 8–10', note: 'Kontrolované spouštění' },
+                    { name: 'Bulharské dřepy s DB', reps: '3 × 8', note: 'Na každou nohu zvlášť' },
+                    { name: 'Výpony na lýtka ve stoje', reps: '4 × 8–10', note: 'Pauza 2s v protažení dole' }
+                ]
+            },
+            {
+                id: 'push_b',
+                name: 'Push B',
+                type: 'push',
+                focus: 'Military Press Focus',
+                badge: 'badge-push',
+                exercises: [
+                    { name: 'Military Press (Velká osa)', reps: '4 × 3–5', note: 'Hlavní silový cvik' },
+                    { name: 'Bench s úzkým úchopem', reps: '4 × 6–8', note: 'Úchop na šířku ramen (Lockout)' },
+                    { name: 'Dips se zátěží / DB Bench', reps: '3 × 6–8', note: 'Hluboký pokles pod kontrolou' },
+                    { name: 'Upažování na kladce / DB', reps: '4 × 10–12', note: 'Izolace bočního deltu' },
+                    { name: 'Cable Crossover', reps: '3 × 10–12', note: 'Stisknout prsa v kontrakci' },
+                    { name: 'Francouzský tlak na rovné', reps: '3 × 8–10', note: 'Dlouhá hlava tricepsu' }
+                ]
+            },
+            {
+                id: 'pull_b',
+                name: 'Pull B',
+                type: 'pull',
+                focus: 'Barbell Row Focus (Plná síla záda/páteř)',
+                badge: 'badge-pull',
+                exercises: [
+                    { name: 'Přítahy velké osy v předklonu', reps: '4 × 5–7', note: 'Tloušťka zad a síla středu' },
+                    { name: 'Stahování kladky naširoko', reps: '4 × 6–8', note: 'Přítah k horní části prsou' },
+                    { name: 'Přítahy spodní kladky v sedě', reps: '3 × 8–10', note: 'Úzký/paralelní úchop' },
+                    { name: 'Rear Delt Flyes (Stroj)', reps: '4 × 10–12', note: 'Izolace zadních ramen' },
+                    { name: 'Biceps zdvih na šikmé lavici', reps: '3 × 8–10', note: 'Protažení bicepsu v ramenou' },
+                    { name: 'Bicepsový zdvih s EZ osou', reps: '3 × 6–8', note: 'Ve stoje, těžká váha' }
+                ]
+            },
+            {
+                id: 'legs_b',
+                name: 'Legs B',
+                type: 'legs',
+                focus: 'Zadní Dřep Focus',
+                badge: 'badge-legs',
+                exercises: [
+                    { name: 'Zadní Dřep s velkou osou', reps: '4 × 3–5', note: 'Hloubka minimálně pod paralelu' },
+                    { name: 'Rumunský mrtvý tah (RDL)', reps: '4 × 6–8', note: 'Protažení hamstringů a zad' },
+                    { name: 'Předkopávání na stroji', reps: '3 × 10–12', note: 'Vypálení kvadricepsů' },
+                    { name: 'Zakopávání v leže', reps: '3 × 10–12', note: 'Přímá izolace hamstringů' },
+                    { name: 'Výpony na lýtka v sedě', reps: '4 × 10–12', note: 'Zaměření na hluboký lýtkový sval' }
+                ]
+            }
+        ];
+
+        let currentWorkoutIndex = 0;
+
+        // Init App
+        window.onload = function() {
+            setFormattedDate();
+            determineNextWorkout();
+            renderTodayWorkout();
+            renderHistory();
+        };
+
+        function setFormattedDate() {
+            const now = new Date();
+            const options = { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' };
+            document.getElementById('header-date').innerText = now.toLocaleDateString('cs-CZ', options);
+        }
+
+        function determineNextWorkout() {
+            const history = JSON.parse(localStorage.getItem('ppl_workout_history') || '[]');
+            if (history.length === 0) {
+                currentWorkoutIndex = 0; // Push A as default
+                document.getElementById('last-workout-info').innerText = 'Zatím nebyl zapsán žádný trénink. Začínáme s Push A!';
+            } else {
+                const lastWorkout = history[0]; // Most recent
+                const lastIndex = ROUTINE.findIndex(r => r.id === lastWorkout.routineId);
+                if (lastIndex !== -1) {
+                    currentWorkoutIndex = (lastIndex + 1) % ROUTINE.length;
+                    document.getElementById('last-workout-info').innerText = `Naposledy odjeto: ${lastWorkout.routineName} (${lastWorkout.date})`;
+                } else {
+                    currentWorkoutIndex = 0;
+                }
+            }
+        }
+
+        function cycleOverrideWorkout() {
+            currentWorkoutIndex = (currentWorkoutIndex + 1) % ROUTINE.length;
+            renderTodayWorkout();
+        }
+
+        function renderTodayWorkout() {
+            const workout = ROUTINE[currentWorkoutIndex];
+            const badgeEl = document.getElementById('today-badge');
+            
+            badgeEl.className = `badge ${workout.badge}`;
+            badgeEl.innerText = `NÁVRH NA DNES: ${workout.name.toUpperCase()}`;
+            
+            document.getElementById('today-title').innerText = workout.name;
+            document.getElementById('today-subtitle').innerText = workout.focus;
+
+            const listEl = document.getElementById('exercise-list');
+            listEl.innerHTML = '';
+
+            workout.exercises.forEach((ex, idx) => {
+                const item = document.createElement('div');
+                item.className = `exercise-item ${workout.type}`;
+                item.innerHTML = `
+                    <div class="exercise-header">
+                        <span class="exercise-title">${idx + 1}. ${ex.name}</span>
+                        <span class="exercise-meta">${ex.reps}</span>
+                    </div>
+                    <div class="exercise-note">${ex.note}</div>
+                    <div class="input-group">
+                        <input type="text" id="ex-weight-${idx}" class="input-field" placeholder="Váha (kg)">
+                        <input type="text" id="ex-reps-${idx}" class="input-field" placeholder="Opakování">
+                    </div>
+                `;
+                listEl.appendChild(item);
+            });
+        }
+
+        function saveWorkout() {
+            const workout = ROUTINE[currentWorkoutIndex];
+            const now = new Date();
+            const dateStr = now.toLocaleDateString('cs-CZ');
+
+            const loggedExercises = workout.exercises.map((ex, idx) => {
+                const weight = document.getElementById(`ex-weight-${idx}`).value || '0 kg';
+                const reps = document.getElementById(`ex-reps-${idx}`).value || '0';
+                return { name: ex.name, weight, reps };
+            });
+
+            const entry = {
+                id: Date.now(),
+                routineId: workout.id,
+                routineName: workout.name,
+                date: dateStr,
+                timestamp: now.getTime(),
+                exercises: loggedExercises
+            };
+
+            const history = JSON.parse(localStorage.getItem('ppl_workout_history') || '[]');
+            history.unshift(entry); // Add to beginning
+            localStorage.setItem('ppl_workout_history', JSON.stringify(history));
+
+            alert(`✅ Trénink ${workout.name} byl úspěšně uložen!`);
+            
+            // Advance to next workout for upcoming session
+            determineNextWorkout();
+            renderTodayWorkout();
+            renderHistory();
+        }
+
+        function renderHistory() {
+            const history = JSON.parse(localStorage.getItem('ppl_workout_history') || '[]');
+            const container = document.getElementById('history-container');
+            container.innerHTML = '';
+
+            if (history.length === 0) {
+                container.innerHTML = '<p style="font-size: 0.85rem; color: var(--text-muted);">Zatím nemáš žádné uložené tréninky.</p>';
+                return;
+            }
+
+            history.forEach(item => {
+                const card = document.createElement('div');
+                card.style.background = 'var(--bg-main)';
+                card.style.padding = '12px';
+                card.style.borderRadius = '8px';
+                card.style.marginBottom = '10px';
+                card.style.border = '1px solid var(--border-color)';
+
+                let exHtml = item.exercises.map(e => `<div style="font-size: 0.8rem; color: var(--text-muted); display: flex; justify-content: space-between; margin-top: 4px;"><span>${e.name}</span><strong style="color: var(--text-main);">${e.weight} × ${e.reps}</strong></div>`).join('');
+
+                card.innerHTML = `
+                    <div style="display: flex; justify-content: space-between; font-size: 0.9rem; font-weight: bold; margin-bottom: 6px; color: var(--accent-gold);">
+                        <span>${item.routineName}</span>
+                        <span>${item.date}</span>
+                    </div>
+                    ${exHtml}
+                `;
+                container.appendChild(card);
+            });
+        }
+
+        function switchView(viewName) {
+            document.getElementById('view-today').classList.add('hidden');
+            document.getElementById('view-dashboard').classList.add('hidden');
+            document.getElementById('view-history').classList.add('hidden');
+
+            document.getElementById('nav-today').classList.remove('active');
+            document.getElementById('nav-dashboard').classList.remove('active');
+            document.getElementById('nav-history').classList.remove('active');
+
+            document.getElementById(`view-${viewName}`).classList.remove('hidden');
+            document.getElementById(`nav-${viewName}`).classList.add('active');
+        }
+    </script>
+</body>
+</html>
